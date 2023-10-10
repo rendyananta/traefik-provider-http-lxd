@@ -2,6 +2,8 @@ cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMT
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/canonical/lxd v0.0.0-20231010070141-0ccc9bf1cd52 h1:XR5+ASKJLNXuqrgzjIghHKCRIaJzG3tz94DLcBh7KQ0=
 github.com/canonical/lxd v0.0.0-20231010070141-0ccc9bf1cd52/go.mod h1:/lJ1suHbUSZn1VgwfWEcjkddHk4JeLTjtBwFPY0Eb7o=
+github.com/canonical/lxd v0.0.0-20231010145149-33693b97faf9 h1:5ieV9b9toSoqf1G0ULDookrcNAd5JSZGMRz32bRE0tA=
+github.com/canonical/lxd v0.0.0-20231010145149-33693b97faf9/go.mod h1:/lJ1suHbUSZn1VgwfWEcjkddHk4JeLTjtBwFPY0Eb7o=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

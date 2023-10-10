@@ -3,7 +3,7 @@ module traefik-http-lxd-provider
 go 1.20
 
 require (
-	github.com/canonical/lxd v0.0.0-20231010070141-0ccc9bf1cd52 // indirect
+	github.com/canonical/lxd v0.0.0-20231010145149-33693b97faf9 // indirect
 	github.com/flosch/pongo2 v0.0.0-20200913210552-0d938eb266f3 // indirect
 	github.com/go-macaroon-bakery/macaroon-bakery/v3 v3.0.1 // indirect
 	github.com/go-macaroon-bakery/macaroonpb v1.0.0 // indirect

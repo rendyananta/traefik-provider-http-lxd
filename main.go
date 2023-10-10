@@ -1,33 +1,20 @@
 package main
 
 import (
-	"context"
-	lxd "github.com/canonical/lxd/client"
+	"github.com/canonical/lxd/shared/api"
 	"log"
-	"os"
 )
 
 func main() {
-	certFile, err := os.ReadFile("certs/lxd-traefik.crt")
-
+	server, err := Connect()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalln("error")
 	}
 
-	keyFile, err := os.ReadFile("certs/lxd-traefik.key")
-
+	containers, err := server.GetInstancesFull(api.InstanceTypeContainer)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalln(err)
 	}
 
-	server, err := lxd.ConnectPublicLXDWithContext(context.Background(), "https://192.168.64.13:8443", &lxd.ConnectionArgs{
-		TLSClientCert: string(certFile),
-		TLSClientKey:  string(keyFile),
-	})
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println(server)
+	log.Printf("%+v", containers)
 }
