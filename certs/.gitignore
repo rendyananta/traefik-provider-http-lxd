@@ -1,0 +1,4 @@
+lxd-traefik.crt
+lxd-traefik.csr
+lxd-traefik.key
+lxd-traefik.pfx
