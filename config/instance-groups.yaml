@@ -1,0 +1,12 @@
+default:
+  nginx-backend:
+    project_name: default
+    group_name: nginx-backend
+    instance_prefix: nginx-backend--
+    instance_type: container
+
+  nginx-frontend:
+    project_name: default
+    group_name: nginx-backend
+    instance_prefix: nginx-backend--
+    instance_type: container
