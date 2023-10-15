@@ -7,6 +7,7 @@ package mock_client
 import (
 	reflect "reflect"
 
+	lxd "github.com/canonical/lxd/client"
 	api "github.com/canonical/lxd/shared/api"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -64,4 +65,33 @@ func (m *MockLXDServer) GetInstanceFull(name string) (*api.InstanceFull, string,
 func (mr *MockLXDServerMockRecorder) GetInstanceFull(name interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInstanceFull", reflect.TypeOf((*MockLXDServer)(nil).GetInstanceFull), name)
+}
+
+// GetInstancesFullWithFilter mocks base method.
+func (m *MockLXDServer) GetInstancesFullWithFilter(instanceType api.InstanceType, filters []string) ([]api.InstanceFull, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetInstancesFullWithFilter", instanceType, filters)
+	ret0, _ := ret[0].([]api.InstanceFull)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetInstancesFullWithFilter indicates an expected call of GetInstancesFullWithFilter.
+func (mr *MockLXDServerMockRecorder) GetInstancesFullWithFilter(instanceType, filters interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInstancesFullWithFilter", reflect.TypeOf((*MockLXDServer)(nil).GetInstancesFullWithFilter), instanceType, filters)
+}
+
+// UseProject mocks base method.
+func (m *MockLXDServer) UseProject(name string) lxd.InstanceServer {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UseProject", name)
+	ret0, _ := ret[0].(lxd.InstanceServer)
+	return ret0
+}
+
+// UseProject indicates an expected call of UseProject.
+func (mr *MockLXDServerMockRecorder) UseProject(name interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UseProject", reflect.TypeOf((*MockLXDServer)(nil).UseProject), name)
 }

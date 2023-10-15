@@ -32,6 +32,8 @@ type ConnectionPool struct {
 type LXDServer interface {
 	GetInstance(name string) (instance *api.Instance, ETag string, err error)
 	GetInstanceFull(name string) (instance *api.InstanceFull, ETag string, err error)
+	UseProject(name string) (client lxd.InstanceServer)
+	GetInstancesFullWithFilter(instanceType api.InstanceType, filters []string) (instances []api.InstanceFull, err error)
 }
 
 // LXDClient wrapper, to extend the instance server capability.
