@@ -2,13 +2,12 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	lxd "github.com/canonical/lxd/client"
 	"github.com/canonical/lxd/shared/api"
 	"log"
 	"os"
 	"time"
+	"traefik-http-lxd-provider/client"
 )
 
 type VirtualInstanceGroup struct {
@@ -29,63 +28,38 @@ type InstanceInfo struct {
 type ProjectName = string
 type GroupName = string
 
+type GoroutineWorker interface {
+	AddTask(task func())
+}
+
+type LXDClientPool interface {
+	Get() (*client.LXDClient, error)
+	Release(conn *client.LXDClient) error
+}
+
 type VirtualInstanceGroupRegistrar = map[ProjectName]map[GroupName]VirtualInstanceGroup
 
 type InstanceManager struct {
-	lxd.InstanceServer
-	GroupMap      VirtualInstanceGroupRegistrar
-	ProjectClient map[ProjectName]lxd.InstanceServer
+	clientPool LXDClientPool
+	worker     GoroutineWorker
+	GroupMap   VirtualInstanceGroupRegistrar
 }
 
-func NewInstanceManager() (*InstanceManager, error) {
-	certPath := os.Getenv("CERT_PATH")
-	if certPath == "" {
-		certPath = "certs/lxd-traefik.crt"
-	}
-
-	keyPath := os.Getenv("KEY_PATH")
-	if keyPath == "" {
-		keyPath = "certs/lxd-traefik.key"
-	}
-
-	certFile, err := os.ReadFile(certPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	keyFile, err := os.ReadFile(keyPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	serverURL := os.Getenv("LXD_SERVER_URL")
-	if serverURL == "" {
-		serverURL = "https://localhost:8443"
-	}
-
-	serverConn, err := lxd.ConnectLXDWithContext(context.Background(), serverURL, &lxd.ConnectionArgs{
-		InsecureSkipVerify: true,
-		TLSClientCert:      string(certFile),
-		TLSClientKey:       string(keyFile),
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	client := &InstanceManager{
-		InstanceServer: serverConn,
-		GroupMap:       make(VirtualInstanceGroupRegistrar),
+func NewInstanceManager(worker GoroutineWorker, pool LXDClientPool) (*InstanceManager, error) {
+	c := &InstanceManager{
+		worker:     worker,
+		clientPool: pool,
+		GroupMap:   make(VirtualInstanceGroupRegistrar),
 	}
 
 	go func() {
 		for {
-			client.ReadConfig()
+			c.ReadConfig()
 			time.Sleep(10 * time.Second)
 		}
 	}()
 
-	return client, nil
+	return c, nil
 }
 
 func (c *InstanceManager) ReadConfig() *InstanceManager {
@@ -105,20 +79,16 @@ func (c *InstanceManager) ReadConfig() *InstanceManager {
 	}
 
 	for projectName, virtualInstanceGroups := range registrar {
-		if _, ok := c.ProjectClient[projectName]; !ok {
-			newClient := c.InstanceServer.UseProject(projectName)
-			if newClient == nil {
-				log.Printf("project client for [%s] is nil", projectName)
-				continue
-			}
-
-			c.ProjectClient[projectName] = newClient
+		lxdClient, err := c.clientPool.Get()
+		if err != nil {
+			log.Println("error get a client, err: ", err)
+			continue
 		}
 
-		client := c.ProjectClient[projectName]
+		lxdClient.UseProject(projectName)
 
 		for _, group := range virtualInstanceGroups {
-			instances, err := client.GetInstancesFullWithFilter(group.InstanceType, []string{""})
+			instances, err := lxdClient.GetInstancesFullWithFilter(group.InstanceType, []string{""})
 			if err != nil {
 				log.Printf("failed to get instances full for [%s]: group [%s], err: %s", projectName, group.GroupName, err)
 				continue
