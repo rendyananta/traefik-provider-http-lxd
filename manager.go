@@ -2,19 +2,19 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"github.com/canonical/lxd/shared/api"
+	"gopkg.in/yaml.v3"
 	"log"
 	"os"
-	"time"
+	"strings"
 	"traefik-http-lxd-provider/client"
 )
 
 type VirtualInstanceGroup struct {
-	GroupName      GroupName
-	ProjectName    ProjectName
-	InstancePrefix string
-	InstanceType   api.InstanceType
+	GroupName      GroupName        `yaml:"group_name"`
+	ProjectName    ProjectName      `yaml:"project_name"`
+	InstancePrefix string           `yaml:"instance_prefix"`
+	InstanceType   api.InstanceType `yaml:"instance_type"`
 	Members        []InstanceInfo
 }
 
@@ -50,16 +50,12 @@ type InstanceManager struct {
 
 func NewInstanceManager(worker GoroutineWorker, pool LXDClientPool) (*InstanceManager, error) {
 	c := &InstanceManager{
-		worker:     worker,
-		clientPool: pool,
+		worker:         worker,
+		clientPool:     pool,
+		ActiveServices: map[string][]string{},
 	}
 
-	go func() {
-		for {
-			c.ReadConfig()
-			time.Sleep(10 * time.Second)
-		}
-	}()
+	c.ReadConfig()
 
 	return c, nil
 }
@@ -75,7 +71,7 @@ func (c *InstanceManager) ReadConfig() *InstanceManager {
 
 	var registrar VirtualInstanceGroupRegistrar
 
-	if err := json.NewDecoder(buf).Decode(&registrar); err != nil {
+	if err := yaml.NewDecoder(buf).Decode(&registrar); err != nil {
 		log.Println("failed to decode config file, err: ", err)
 		return c
 	}
@@ -89,14 +85,13 @@ func (c *InstanceManager) ReadConfig() *InstanceManager {
 
 		lxdClient.UseProject(service.ProjectName)
 
-		instances, err := lxdClient.GetInstancesFullWithFilter(service.InstanceType, []string{""})
+		instances, err := lxdClient.GetInstancesFull(service.InstanceType)
 		if err != nil {
 			log.Printf("failed to get instances full for [%s]: group [%s], err: %s", service.ProjectName, service.GroupName, err)
 			continue
 		}
 
-		//TODO: register to map that save the instance states.
-		log.Println(instances)
+		c.RegisterGroup(service, instances)
 	}
 
 	return c
@@ -106,16 +101,34 @@ func (c *InstanceManager) RegisterGroup(group VirtualInstanceGroup, instances []
 	c.ActiveServices[group.GroupName] = make([]string, 0, len(instances))
 
 	for _, instance := range instances {
+		if !strings.HasPrefix(instance.Name, group.InstancePrefix) {
+			continue
+		}
+
 		if !instance.IsActive() {
 			continue
 		}
 
-		ip, ok := instance.Devices["eth0"]
+		eth0, ok := instance.State.Network["eth0"]
 		if !ok {
 			continue
 		}
 
-		c.ActiveServices[group.GroupName] = append(c.ActiveServices[group.GroupName], "")
+		inet4 := ""
+
+		for _, address := range eth0.Addresses {
+			if address.Family != "inet" {
+				continue
+			}
+
+			inet4 = address.Address
+		}
+
+		if inet4 == "" {
+			continue
+		}
+
+		c.ActiveServices[group.GroupName] = append(c.ActiveServices[group.GroupName], inet4)
 	}
 
 	return c

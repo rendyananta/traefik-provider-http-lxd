@@ -1,12 +1,12 @@
 services:
   nginx-backend:
     project_name: default
-    group_name: nginx-backend
-    instance_prefix: nginx-backend--
+    group_name: svc-nginx
+    instance_prefix: svc-nginx-
     instance_type: container
 
   nginx-frontend:
     project_name: default
-    group_name: nginx-backend
-    instance_prefix: nginx-backend--
+    group_name: svc-nginx
+    instance_prefix: svc-nginx-
     instance_type: container

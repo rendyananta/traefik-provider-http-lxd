@@ -6,6 +6,7 @@ import (
 	lxd "github.com/canonical/lxd/client"
 	"github.com/canonical/lxd/shared/api"
 	"log"
+	"math/rand"
 	"os"
 	"slices"
 	"sync"
@@ -34,6 +35,8 @@ type LXDServer interface {
 	GetInstanceFull(name string) (instance *api.InstanceFull, ETag string, err error)
 	UseProject(name string) (client lxd.InstanceServer)
 	GetInstancesFullWithFilter(instanceType api.InstanceType, filters []string) (instances []api.InstanceFull, err error)
+
+	GetInstancesFull(instanceType api.InstanceType) (instances []api.InstanceFull, err error)
 }
 
 // LXDClient wrapper, to extend the instance server capability.
@@ -83,7 +86,9 @@ func create() (lxd.InstanceServer, error) {
 
 func (c *ConnectionPool) Get() (*LXDClient, error) {
 	if len(c.idleConnections) == 0 {
-		return nil, ErrPoolExhausted
+		if err := c.open(rand.Int()); err != nil {
+			return nil, ErrPoolExhausted
+		}
 	}
 
 	c.mutex.Lock()
@@ -121,21 +126,17 @@ func NewClientConnectionPool(config PoolConfig) *ConnectionPool {
 		config.IdleConnectionTimeout = 1 * time.Minute
 	}
 
-	idleConnections := make([]*LXDClient, 0, config.MaxPoolSize)
-
-	for i := 0; i < config.MaxPoolSize; i++ {
-		conn, err := create()
-		if err != nil {
-			continue
-		}
-
-		idleConnections = append(idleConnections, &LXDClient{
-			LXDServer: conn,
-		})
-	}
+	idleConnections := make([]*LXDClient, 0, config.MaxIdleConnections)
 
 	client := &ConnectionPool{
 		idleConnections: idleConnections,
+		config:          config,
+	}
+
+	for i := 0; i < config.MaxPoolSize; i++ {
+		if err := client.open(i); err != nil {
+			continue
+		}
 	}
 
 	// unused idle connections collector
@@ -148,6 +149,20 @@ func NewClientConnectionPool(config PoolConfig) *ConnectionPool {
 	}()
 
 	return client
+}
+
+func (c *ConnectionPool) open(id int) error {
+	conn, err := create()
+	if err != nil {
+		return err
+	}
+
+	c.idleConnections = append(c.idleConnections, &LXDClient{
+		id:        id,
+		LXDServer: conn,
+	})
+
+	return nil
 }
 
 func (c *ConnectionPool) clearUnusedConnections() {
