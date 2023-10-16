@@ -37,19 +37,21 @@ type LXDClientPool interface {
 	Release(conn *client.LXDClient) error
 }
 
-type VirtualInstanceGroupRegistrar = map[ProjectName]map[GroupName]VirtualInstanceGroup
+type VirtualInstanceGroupRegistrar struct {
+	Services map[string]VirtualInstanceGroup `yaml:"services"`
+}
 
 type InstanceManager struct {
-	clientPool LXDClientPool
-	worker     GoroutineWorker
-	GroupMap   VirtualInstanceGroupRegistrar
+	clientPool     LXDClientPool
+	worker         GoroutineWorker
+	GroupMap       VirtualInstanceGroupRegistrar
+	ActiveServices map[string][]string
 }
 
 func NewInstanceManager(worker GoroutineWorker, pool LXDClientPool) (*InstanceManager, error) {
 	c := &InstanceManager{
 		worker:     worker,
 		clientPool: pool,
-		GroupMap:   make(VirtualInstanceGroupRegistrar),
 	}
 
 	go func() {
@@ -63,7 +65,7 @@ func NewInstanceManager(worker GoroutineWorker, pool LXDClientPool) (*InstanceMa
 }
 
 func (c *InstanceManager) ReadConfig() *InstanceManager {
-	cfg, err := os.ReadFile("config/instance-groups.yaml")
+	cfg, err := os.ReadFile("config/services.yaml")
 	if err != nil {
 		log.Println("failed to read config file, err: ", err)
 		return c
@@ -78,41 +80,42 @@ func (c *InstanceManager) ReadConfig() *InstanceManager {
 		return c
 	}
 
-	for projectName, virtualInstanceGroups := range registrar {
+	for _, service := range registrar.Services {
 		lxdClient, err := c.clientPool.Get()
 		if err != nil {
 			log.Println("error get a client, err: ", err)
 			continue
 		}
 
-		lxdClient.UseProject(projectName)
+		lxdClient.UseProject(service.ProjectName)
 
-		for _, group := range virtualInstanceGroups {
-			instances, err := lxdClient.GetInstancesFullWithFilter(group.InstanceType, []string{""})
-			if err != nil {
-				log.Printf("failed to get instances full for [%s]: group [%s], err: %s", projectName, group.GroupName, err)
-				continue
-			}
-
-			//TODO: register to map that save the instance states.
-			log.Println(instances)
+		instances, err := lxdClient.GetInstancesFullWithFilter(service.InstanceType, []string{""})
+		if err != nil {
+			log.Printf("failed to get instances full for [%s]: group [%s], err: %s", service.ProjectName, service.GroupName, err)
+			continue
 		}
+
+		//TODO: register to map that save the instance states.
+		log.Println(instances)
 	}
 
 	return c
 }
 
-func (c *InstanceManager) RegisterGroup(projectName ProjectName, group VirtualInstanceGroup, instances []api.InstanceFull) *InstanceManager {
-	_, ok := c.GroupMap[projectName]
-	if !ok {
-		c.GroupMap[projectName] = map[GroupName]VirtualInstanceGroup{}
-	}
+func (c *InstanceManager) RegisterGroup(group VirtualInstanceGroup, instances []api.InstanceFull) *InstanceManager {
+	c.ActiveServices[group.GroupName] = make([]string, 0, len(instances))
 
-	c.GroupMap[projectName][group.GroupName] = VirtualInstanceGroup{
-		GroupName:      group.GroupName,
-		ProjectName:    projectName,
-		InstancePrefix: group.InstancePrefix,
-		Members:        make([]InstanceInfo, 0),
+	for _, instance := range instances {
+		if !instance.IsActive() {
+			continue
+		}
+
+		ip, ok := instance.Devices["eth0"]
+		if !ok {
+			continue
+		}
+
+		c.ActiveServices[group.GroupName] = append(c.ActiveServices[group.GroupName], "")
 	}
 
 	return c
