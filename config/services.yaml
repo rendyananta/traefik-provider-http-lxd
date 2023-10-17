@@ -5,6 +5,11 @@ services:
     group_name: nginx-http
     instance_prefix: redis-cluster-
     instance_type: container
+    lb_options:
+      healthCheck:
+        path: /
+        interval: "10s"
+        timeout: "3s"
 
   redis-cluster:
     service_type: tcp

@@ -14,12 +14,13 @@ import (
 )
 
 type VirtualInstanceGroup struct {
-	ServiceType    ServiceType      `yaml:"service_type"`
-	GroupName      GroupName        `yaml:"group_name"`
-	ProjectName    ProjectName      `yaml:"project_name"`
-	InstancePrefix string           `yaml:"instance_prefix"`
-	InstanceType   api.InstanceType `yaml:"instance_type"`
-	Port           int              `yaml:"port"`
+	ServiceType    ServiceType            `yaml:"service_type"`
+	GroupName      GroupName              `yaml:"group_name"`
+	ProjectName    ProjectName            `yaml:"project_name"`
+	InstancePrefix string                 `yaml:"instance_prefix"`
+	InstanceType   api.InstanceType       `yaml:"instance_type"`
+	Port           int                    `yaml:"port"`
+	LBOptions      map[string]interface{} `yaml:"lb_options,omitempty"`
 	Members        []InstanceInfo
 }
 
@@ -51,16 +52,21 @@ type VirtualInstanceGroupRegistrar struct {
 	Services map[string]VirtualInstanceGroup `yaml:"services"`
 }
 
+type LoadBalancerServers struct {
+	Servers []string
+	Options map[string]interface{}
+}
+
 type ActiveServers struct {
-	HTTP map[string][]string
-	TCP  map[string][]string
+	HTTP map[string]LoadBalancerServers
+	TCP  map[string]LoadBalancerServers
 }
 
 type InstanceManager struct {
-	clientPool    LXDClientPool
-	worker        GoroutineWorker
-	GroupMap      VirtualInstanceGroupRegistrar
-	ActiveServers ActiveServers
+	clientPool             LXDClientPool
+	worker                 GoroutineWorker
+	InstanceGroupRegistrar VirtualInstanceGroupRegistrar
+	ActiveServers          ActiveServers
 }
 
 const defaultHTTPPort = 80
@@ -70,12 +76,15 @@ func NewInstanceManager(worker GoroutineWorker, pool LXDClientPool) (*InstanceMa
 		worker:     worker,
 		clientPool: pool,
 		ActiveServers: ActiveServers{
-			HTTP: map[string][]string{},
-			TCP:  map[string][]string{},
+			HTTP: map[string]LoadBalancerServers{},
+			TCP:  map[string]LoadBalancerServers{},
 		},
 	}
 
-	t := time.NewTicker(10 * time.Second)
+	// preload config
+	c.ReadConfig()
+
+	t := time.NewTicker(20 * time.Second)
 
 	go func() {
 		for {
@@ -98,14 +107,12 @@ func (c *InstanceManager) ReadConfig() *InstanceManager {
 
 	buf := bytes.NewBuffer(cfg)
 
-	var registrar VirtualInstanceGroupRegistrar
-
-	if err := yaml.NewDecoder(buf).Decode(&registrar); err != nil {
+	if err := yaml.NewDecoder(buf).Decode(&c.InstanceGroupRegistrar); err != nil {
 		log.Println("failed to decode config file, err: ", err)
 		return c
 	}
 
-	for _, service := range registrar.Services {
+	for _, service := range c.InstanceGroupRegistrar.Services {
 		if service.ServiceType == ServiceTypeTCP && service.Port == 0 {
 			slog.Error("empty port on tcp service", "service", service.GroupName, "service_type", service.ServiceType)
 			continue
@@ -181,9 +188,15 @@ func (c *InstanceManager) RegisterGroup(service VirtualInstanceGroup, instances 
 	}
 
 	if service.ServiceType == ServiceTypeHTTP {
-		c.ActiveServers.HTTP[service.GroupName] = addresses
+		c.ActiveServers.HTTP[service.GroupName] = LoadBalancerServers{
+			Servers: addresses,
+			Options: service.LBOptions,
+		}
 	} else {
-		c.ActiveServers.TCP[service.GroupName] = addresses
+		c.ActiveServers.TCP[service.GroupName] = LoadBalancerServers{
+			Servers: addresses,
+			Options: service.LBOptions,
+		}
 	}
 
 	return c
