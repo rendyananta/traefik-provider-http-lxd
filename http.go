@@ -1,8 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"net/http"
 )
 
@@ -49,14 +49,14 @@ func (hh *HTTPHandler) ProvideHTTPServices(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	encoded, err := json.Marshal(res)
+	encoded, err := yaml.Marshal(res)
 	if err != nil {
 		w.WriteHeader(500)
 		w.Write([]byte(fmt.Sprint("error marshaling json, err: ", err)))
 		return
 	}
 
-	w.Header().Add("content-type", "application/json")
+	w.Header().Add("content-type", "text/yaml")
 	w.WriteHeader(200)
 	w.Write(encoded)
 }
@@ -76,14 +76,14 @@ func (hh *HTTPHandler) ProvideTCPServices(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	encoded, err := json.Marshal(res)
+	encoded, err := yaml.Marshal(res)
 	if err != nil {
 		w.WriteHeader(500)
 		w.Write([]byte(fmt.Sprint("error marshaling json, err: ", err)))
 		return
 	}
 
-	w.Header().Add("content-type", "application/json")
+	w.Header().Add("content-type", "text/yaml")
 	w.WriteHeader(200)
 	w.Write(encoded)
 }

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 	"traefik-http-lxd-provider/client"
 )
 
@@ -74,7 +75,16 @@ func NewInstanceManager(worker GoroutineWorker, pool LXDClientPool) (*InstanceMa
 		},
 	}
 
-	c.ReadConfig()
+	t := time.NewTicker(10 * time.Second)
+
+	go func() {
+		for {
+			select {
+			case <-t.C:
+				c.ReadConfig()
+			}
+		}
+	}()
 
 	return c, nil
 }
@@ -160,7 +170,7 @@ func (c *InstanceManager) RegisterGroup(service VirtualInstanceGroup, instances 
 		}
 
 		if service.ServiceType == ServiceTypeHTTP {
-			if service.Port == 0 || service.Port == defaultHTTPPort {
+			if !(service.Port == 0 || service.Port == defaultHTTPPort) {
 				inet4 = fmt.Sprintf("http://%s:%d", inet4, service.Port)
 			}
 		} else if service.ServiceType == ServiceTypeTCP {

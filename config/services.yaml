@@ -2,7 +2,7 @@ services:
   nginx-http:
     service_type: http
     project_name: default
-    group_name: redis-cluster
+    group_name: nginx-http
     instance_prefix: redis-cluster-
     instance_type: container
 
