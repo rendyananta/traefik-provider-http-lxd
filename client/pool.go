@@ -19,7 +19,15 @@ type PoolConfig struct {
 	MaxPoolSize           int           `yaml:"max_pool_size"`
 	MaxIdleConnections    int           `yaml:"max_idle_connections"`
 	IdleConnectionTimeout time.Duration `yaml:"idle_connection_timeout"`
+	credentials           Credentials
 }
+
+type Credentials struct {
+	certFile  []byte
+	keyFile   []byte
+	serverURL string
+}
+
 type ConnectionPool struct {
 	idleConnections []*LXDClient
 	usedConnections []*LXDClient
@@ -51,32 +59,7 @@ func (c *LXDClient) updateLastUsed() bool {
 	return true
 }
 
-func create() (lxd.InstanceServer, error) {
-	certPath := os.Getenv("CERT_PATH")
-	if certPath == "" {
-		certPath = "certs/lxd-traefik.crt"
-	}
-
-	keyPath := os.Getenv("KEY_PATH")
-	if keyPath == "" {
-		keyPath = "certs/lxd-traefik.key"
-	}
-
-	certFile, err := os.ReadFile(certPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	keyFile, err := os.ReadFile(keyPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	serverURL := os.Getenv("LXD_SERVER_URL")
-	if serverURL == "" {
-		serverURL = "https://localhost:8443"
-	}
-
+func create(serverURL string, certFile []byte, keyFile []byte) (lxd.InstanceServer, error) {
 	return lxd.ConnectLXDWithContext(context.Background(), serverURL, &lxd.ConnectionArgs{
 		InsecureSkipVerify: true,
 		TLSClientCert:      string(certFile),
@@ -133,18 +116,51 @@ func NewClientConnectionPool(config PoolConfig) *ConnectionPool {
 		config:          config,
 	}
 
-	for i := 0; i < config.MaxPoolSize; i++ {
+	certPath := os.Getenv("CERT_PATH")
+	if certPath == "" {
+		certPath = "certs/lxd-traefik.crt"
+	}
+
+	keyPath := os.Getenv("KEY_PATH")
+	if keyPath == "" {
+		keyPath = "certs/lxd-traefik.key"
+	}
+
+	certFile, err := os.ReadFile(certPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	keyFile, err := os.ReadFile(keyPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	serverURL := os.Getenv("LXD_SERVER_URL")
+	if serverURL == "" {
+		serverURL = "https://localhost:8443"
+	}
+
+	client.config.credentials.certFile = certFile
+	client.config.credentials.keyFile = keyFile
+	client.config.credentials.serverURL = serverURL
+
+	for i := 0; i < client.config.MaxPoolSize; i++ {
 		if err := client.open(i); err != nil {
 			continue
 		}
 	}
 
-	// unused idle connections collector
+	// clear unused idle connections collector
 	// to prevent memory leak.
+
+	t := time.NewTicker(10 * time.Second)
 	go func() {
 		for {
-			client.clearUnusedConnections()
-			time.Sleep(10 * time.Second)
+			select {
+			case <-t.C:
+				client.clearUnusedConnections()
+			}
 		}
 	}()
 
@@ -152,7 +168,7 @@ func NewClientConnectionPool(config PoolConfig) *ConnectionPool {
 }
 
 func (c *ConnectionPool) open(id int) error {
-	conn, err := create()
+	conn, err := create(c.config.credentials.serverURL, c.config.credentials.certFile, c.config.credentials.keyFile)
 	if err != nil {
 		return err
 	}

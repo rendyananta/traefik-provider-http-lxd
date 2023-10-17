@@ -2,19 +2,23 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/canonical/lxd/shared/api"
 	"gopkg.in/yaml.v3"
 	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"traefik-http-lxd-provider/client"
 )
 
 type VirtualInstanceGroup struct {
+	ServiceType    ServiceType      `yaml:"service_type"`
 	GroupName      GroupName        `yaml:"group_name"`
 	ProjectName    ProjectName      `yaml:"project_name"`
 	InstancePrefix string           `yaml:"instance_prefix"`
 	InstanceType   api.InstanceType `yaml:"instance_type"`
+	Port           int              `yaml:"port"`
 	Members        []InstanceInfo
 }
 
@@ -27,6 +31,11 @@ type InstanceInfo struct {
 
 type ProjectName = string
 type GroupName = string
+
+type ServiceType = string
+
+const ServiceTypeHTTP ServiceType = "http"
+const ServiceTypeTCP ServiceType = "tcp"
 
 type GoroutineWorker interface {
 	AddTask(task func())
@@ -41,18 +50,28 @@ type VirtualInstanceGroupRegistrar struct {
 	Services map[string]VirtualInstanceGroup `yaml:"services"`
 }
 
-type InstanceManager struct {
-	clientPool     LXDClientPool
-	worker         GoroutineWorker
-	GroupMap       VirtualInstanceGroupRegistrar
-	ActiveServices map[string][]string
+type ActiveServers struct {
+	HTTP map[string][]string
+	TCP  map[string][]string
 }
+
+type InstanceManager struct {
+	clientPool    LXDClientPool
+	worker        GoroutineWorker
+	GroupMap      VirtualInstanceGroupRegistrar
+	ActiveServers ActiveServers
+}
+
+const defaultHTTPPort = 80
 
 func NewInstanceManager(worker GoroutineWorker, pool LXDClientPool) (*InstanceManager, error) {
 	c := &InstanceManager{
-		worker:         worker,
-		clientPool:     pool,
-		ActiveServices: map[string][]string{},
+		worker:     worker,
+		clientPool: pool,
+		ActiveServers: ActiveServers{
+			HTTP: map[string][]string{},
+			TCP:  map[string][]string{},
+		},
 	}
 
 	c.ReadConfig()
@@ -77,6 +96,11 @@ func (c *InstanceManager) ReadConfig() *InstanceManager {
 	}
 
 	for _, service := range registrar.Services {
+		if service.ServiceType == ServiceTypeTCP && service.Port == 0 {
+			slog.Error("empty port on tcp service", "service", service.GroupName, "service_type", service.ServiceType)
+			continue
+		}
+
 		lxdClient, err := c.clientPool.Get()
 		if err != nil {
 			log.Println("error get a client, err: ", err)
@@ -97,11 +121,18 @@ func (c *InstanceManager) ReadConfig() *InstanceManager {
 	return c
 }
 
-func (c *InstanceManager) RegisterGroup(group VirtualInstanceGroup, instances []api.InstanceFull) *InstanceManager {
-	c.ActiveServices[group.GroupName] = make([]string, 0, len(instances))
+func (c *InstanceManager) RegisterGroup(service VirtualInstanceGroup, instances []api.InstanceFull) *InstanceManager {
+	switch service.ServiceType {
+	case ServiceTypeHTTP:
+	case ServiceTypeTCP:
+	default:
+		service.ServiceType = ServiceTypeHTTP
+	}
+
+	addresses := make([]string, 0, len(instances))
 
 	for _, instance := range instances {
-		if !strings.HasPrefix(instance.Name, group.InstancePrefix) {
+		if !strings.HasPrefix(instance.Name, service.InstancePrefix) {
 			continue
 		}
 
@@ -128,7 +159,21 @@ func (c *InstanceManager) RegisterGroup(group VirtualInstanceGroup, instances []
 			continue
 		}
 
-		c.ActiveServices[group.GroupName] = append(c.ActiveServices[group.GroupName], inet4)
+		if service.ServiceType == ServiceTypeHTTP {
+			if service.Port == 0 || service.Port == defaultHTTPPort {
+				inet4 = fmt.Sprintf("http://%s:%d", inet4, service.Port)
+			}
+		} else if service.ServiceType == ServiceTypeTCP {
+			inet4 = fmt.Sprintf("%s:%d", inet4, service.Port)
+		}
+
+		addresses = append(addresses, inet4)
+	}
+
+	if service.ServiceType == ServiceTypeHTTP {
+		c.ActiveServers.HTTP[service.GroupName] = addresses
+	} else {
+		c.ActiveServers.TCP[service.GroupName] = addresses
 	}
 
 	return c

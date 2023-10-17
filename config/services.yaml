@@ -1,12 +1,15 @@
 services:
-  nginx-backend:
+  nginx-http:
+    service_type: http
     project_name: default
-    group_name: svc-nginx
-    instance_prefix: svc-nginx-
+    group_name: redis-cluster
+    instance_prefix: redis-cluster-
     instance_type: container
 
-  nginx-frontend:
+  redis-cluster:
+    service_type: tcp
     project_name: default
-    group_name: svc-nginx
-    instance_prefix: svc-nginx-
+    group_name: redis-cluster
+    instance_prefix: redis-cluster-
     instance_type: container
+    port: 6379
